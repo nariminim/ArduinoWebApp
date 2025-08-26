@@ -6,35 +6,58 @@ const WRITE_UUID = '00002a57-0000-1000-8000-00805f9b34fb'; // 0x2A57 확장형
 
 
 // ===== OpenWeather API =====
-let url = 'https://api.openweathermap.org/data/2.5/weather?q=Seoul&appid=60f88595a9f4df871399482f2b5d8186&units=metric';
+//let url = 'https://api.openweathermap.org/data/2.5/weather?q=Seoul&appid=60f88595a9f4df871399482f2b5d8186&units=metric';
 
-let writeChar, statusP, connectBtn, send1, send2, send3, fetchBtn;
+const API_KEY = '60f88595a9f4df871399482f2b5d8186';
+let city = 'Seoul';
+
+let writeChar, statusP, connectBtn, send1, send2, send3, fetchBtn, cityInput;
 let lastWeather = '—';
 
 function setup() {
-  createCanvas(700, 210);
+  createCanvas(780, 230);
   textFont('monospace');
 
   statusP = createP('Status: Not connected');
 
+  // BLE 연결
   connectBtn = createButton('🔗 Scan & Connect (acceptAllDevices)');
   connectBtn.mousePressed(connectAny);
   createSpan('&nbsp;');
 
+  // 수동 전송(디버그용)
   send1 = createButton('Send 1'); send1.mousePressed(() => sendNumber(1));
   send2 = createButton('Send 2'); send2.mousePressed(() => sendNumber(2));
   send3 = createButton('Send 3'); send3.mousePressed(() => sendNumber(3));
   createSpan('&nbsp;&nbsp;');
 
-  fetchBtn = createButton('Fetch Weather & Send');
-  fetchBtn.mousePressed(fetchWeatherAndSend);
+  // 도시 입력 + 날씨 호출
+  cityInput = createInput(city);
+  cityInput.attribute('placeholder', 'e.g., Seoul, Tokyo, New York');
+  cityInput.size(200);
+  createSpan('&nbsp;');
+
+  fetchBtn = createButton('🌤 Fetch Weather & Send');
+  fetchBtn.mousePressed(() => {
+    city = (cityInput.value() || 'Seoul').trim();
+    fetchWeatherAndSend();
+  });
+
+  // Enter로도 실행
+  cityInput.elt.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      city = (cityInput.value() || 'Seoul').trim();
+      fetchWeatherAndSend();
+    }
+  });
 }
 
 function draw() {
   background(245);
   text('Open via https or http://localhost. Close other BLE apps before connecting.', 12, 50);
-  text('Weather → LED rule: <10°C → 1, 10–25°C → 2, >25°C → 3; Rain/Thunder/Snow → 1', 12, 70);
-  text('Last weather: ' + lastWeather, 12, 100);
+  text('Rule: temp <10°C → 1, 10–25°C → 2, >25°C → 3', 12, 70);
+  text('City: ' + city, 12, 100);
+  text('Last weather: ' + lastWeather, 12, 120, width-24);
 }
 
 // ---- BLE Connect ----
@@ -68,25 +91,21 @@ async function sendNumber(n) {
 // ---- Fetch weather → decide 1/2/3 → send ----
 async function fetchWeatherAndSend() {
   try {
-    statusP.html('Status: Fetching weather...');
+    const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
+    statusP.html('Status: Fetching weather for ' + city + ' ...');
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
 
-    const temp = data?.main?.temp; // °C
-    //const cond = (data?.weather?.[0]?.main || '').toString(); // e.g., Clear, Clouds, Rain, Snow...
-    //lastWeather = `temp=${temp}°C, condition=${cond}`;
-    lastWeather = `temp=${temp}°C`;
+    const temp = data?.main?.temp;               // °C
+    const cond = (data?.weather?.[0]?.main || '').toString(); // e.g., Clear, Clouds, Rain
+    lastWeather = `temp=${temp}°C, condition=${cond}`;
 
-    // 기본 규칙: 온도 기준
+    // 온도만으로 결정 (구름/비 덮어쓰기 제거)
     let n = 3;
     if (temp < 10) n = 1;
     else if (temp <= 25) n = 2;
     else n = 3;
-
-    // 날씨 상태 우선 규칙(비/천둥/눈이면 1 강제)
-    // const severe = ['Rain','Thunderstorm','Snow'];
-    // if (severe.includes(cond)) n = 1;
 
     await sendNumber(n);
   } catch (e) {
