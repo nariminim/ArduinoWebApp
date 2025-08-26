@@ -84,8 +84,8 @@ async function fetchWeatherAndSend() {
     else n = 3;
 
     // 날씨 상태 우선 규칙(비/천둥/눈이면 1 강제)
-    const severe = ['Rain','Thunderstorm','Snow'];
-    if (severe.includes(cond)) n = 1;
+    // const severe = ['Rain','Thunderstorm','Snow'];
+    // if (severe.includes(cond)) n = 1;
 
     await sendNumber(n);
   } catch (e) {
