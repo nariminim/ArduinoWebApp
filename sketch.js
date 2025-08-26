@@ -4,16 +4,20 @@ const WRITE_UUID = '00002a57-0000-1000-8000-00805f9b34fb'; // 0x2A57 확장형
 // const DEVICE_UUI = 'nano33blesense'장치 표시 이름(아두이노의 setLocalName과 일치)
 // 이름이 너무 길거나(최대31바이트), 같은 장치의 이전 이름이 캐시로 남을 경우 못찾을 수도 있다...
 
-let writeChar, statusP, connectBtn, send1, send2, send3, motionBtn;
-let motionOn = false;
-let lastSent = 0;
-const SEND_INTERVAL_MS = 200;  // 전송 최소 간격
+
+// ===== OpenWeather API =====
+let url = 'https://api.openweathermap.org/data/2.5/weather?q=Seoul&appid=60f88595a9f4df871399482f2b5d8186&units=metric';
+
+let writeChar, statusP, connectBtn, send1, send2, send3, fetchBtn;
+let lastWeather = '—';
 
 function setup() {
-  createCanvas(600, 180); textFont('monospace');
+  createCanvas(700, 210);
+  textFont('monospace');
+
   statusP = createP('Status: Not connected');
 
-  connectBtn = createButton('🔎 Scan & Connect (acceptAllDevices)');
+  connectBtn = createButton('🔗 Scan & Connect (acceptAllDevices)');
   connectBtn.mousePressed(connectAny);
   createSpan('&nbsp;');
 
@@ -22,25 +26,27 @@ function setup() {
   send3 = createButton('Send 3'); send3.mousePressed(() => sendNumber(3));
   createSpan('&nbsp;&nbsp;');
 
-  motionBtn = createButton('📱 Enable Motion Control');
-  motionBtn.mousePressed(enableMotionControl);
+  fetchBtn = createButton('🌤 Fetch Weather & Send');
+  fetchBtn.mousePressed(fetchWeatherAndSend);
 }
 
 function draw() {
   background(245);
-  text('Open via https or http://localhost. Close other BLE apps (e.g., LightBlue).', 12, 50);
-  text('Tilt phone: ax>+3 → 1, ax<-3 → 2, else → 3 (auto send every 200ms)', 12, 70);
+  text('Open via https or http://localhost. Close other BLE apps before connecting.', 12, 50);
+  text('Weather → LED rule: <10°C → 1, 10–25°C → 2, >25°C → 3; Rain/Thunder/Snow → 1', 12, 70);
+  text('Last weather: ' + lastWeather, 12, 100);
 }
 
+// ---- BLE Connect ----
 async function connectAny() {
   try {
     const device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: [SERVICE_UUID]
     });
-    const server = await device.gatt.connect();
+    const server  = await device.gatt.connect();
     const service = await server.getPrimaryService(SERVICE_UUID);
-    writeChar = await service.getCharacteristic(WRITE_UUID);
+    writeChar     = await service.getCharacteristic(WRITE_UUID);
     statusP.html('Status: Connected to ' + (device.name || 'device'));
   } catch (e) {
     statusP.html('Status: Error - ' + e);
@@ -48,47 +54,42 @@ async function connectAny() {
   }
 }
 
+// ---- Write 1 byte to BLE ----
 async function sendNumber(n) {
   if (!writeChar) { statusP.html('Status: Not connected'); return; }
   try {
     await writeChar.writeValue(new Uint8Array([n & 0xFF]));
     statusP.html('Status: Sent ' + n);
-  } catch (e) { statusP.html('Status: Write error - ' + e); }
-}
-
-// === 핸드폰 센서 연동 ===
-async function enableMotionControl() {
-  try {
-    // iOS(Bluefy 등) 권한 요청
-    if (typeof DeviceMotionEvent !== 'undefined' &&
-        typeof DeviceMotionEvent.requestPermission === 'function') {
-      const perm = await DeviceMotionEvent.requestPermission();
-      if (perm !== 'granted') { statusP.html('Status: Motion denied'); return; }
-    }
-    window.addEventListener('devicemotion', onMotion, { passive: true });
-    motionOn = true;
-    statusP.html('Status: Motion control enabled');
   } catch (e) {
-    statusP.html('Status: Motion error - ' + e);
-    console.error(e);
+    statusP.html('Status: Write error - ' + e);
   }
 }
 
-function onMotion(e) {
-  if (!motionOn || !writeChar) return;
+// ---- Fetch weather → decide 1/2/3 → send ----
+async function fetchWeatherAndSend() {
+  try {
+    statusP.html('Status: Fetching weather...');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
 
-  // 가속도(중력 포함) 사용: iOS/안드 공통 가용성 높음
-  const acc = e.accelerationIncludingGravity || e.acceleration;
-  if (!acc) return;
+    const temp = data?.main?.temp; // °C
+    const cond = (data?.weather?.[0]?.main || '').toString(); // e.g., Clear, Clouds, Rain, Snow...
+    lastWeather = `temp=${temp}°C, condition=${cond}`;
 
-  const ax = acc.x || 0;  // 좌/우 기울기 지표로 사용
-  const now = Date.now();
-  if (now - lastSent < SEND_INTERVAL_MS) return;
+    // 기본 규칙: 온도 기준
+    let n = 3;
+    if (temp < 10) n = 1;
+    else if (temp <= 25) n = 2;
+    else n = 3;
 
-  let n = 3;              // 기본 중립
-  if (ax > 3) n = 1;      // 오른쪽으로 기울임
-  else if (ax < -3) n = 2;// 왼쪽으로 기울임
+    // 날씨 상태 우선 규칙(비/천둥/눈이면 1 강제)
+    const severe = ['Rain','Thunderstorm','Snow'];
+    if (severe.includes(cond)) n = 1;
 
-  lastSent = now;
-  sendNumber(n);
+    await sendNumber(n);
+  } catch (e) {
+    statusP.html('Status: Weather error - ' + e);
+    console.error(e);
+  }
 }
