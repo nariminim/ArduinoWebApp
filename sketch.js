@@ -26,7 +26,7 @@ function setup() {
   send3 = createButton('Send 3'); send3.mousePressed(() => sendNumber(3));
   createSpan('&nbsp;&nbsp;');
 
-  fetchBtn = createButton('🌤 Fetch Weather & Send');
+  fetchBtn = createButton('Fetch Weather & Send');
   fetchBtn.mousePressed(fetchWeatherAndSend);
 }
 
@@ -74,8 +74,9 @@ async function fetchWeatherAndSend() {
     const data = await res.json();
 
     const temp = data?.main?.temp; // °C
-    const cond = (data?.weather?.[0]?.main || '').toString(); // e.g., Clear, Clouds, Rain, Snow...
-    lastWeather = `temp=${temp}°C, condition=${cond}`;
+    //const cond = (data?.weather?.[0]?.main || '').toString(); // e.g., Clear, Clouds, Rain, Snow...
+    //lastWeather = `temp=${temp}°C, condition=${cond}`;
+    lastWeather = `temp=${temp}°C`;
 
     // 기본 규칙: 온도 기준
     let n = 3;
