@@ -8,8 +8,21 @@ let accelX = 0, accelY = 0, accelZ = 0;
 let sensorEnabled = false;
 let sensorStatus = "센서 비활성화됨";
 
+// 원의 물리적 속성
+let ballX, ballY;  // 원의 위치
+let ballVX = 0, ballVY = 0;  // 원의 속도
+let ballRotation = 0;  // 원의 회전 각도
+const ballDiameter = 50;
+const ballRadius = ballDiameter / 2;
+const friction = 0.95;  // 마찰 계수
+const accelScale = 0.5;  // 가속도 스케일 조정
+
 function setup() {
   createCanvas(windowWidth, windowHeight);
+
+  // 원을 캔버스 중앙에 초기화
+  ballX = width / 2;
+  ballY = height / 2;
 
   // BLE 연결
   connectBtn = createButton("Scan & Connect");
@@ -46,6 +59,14 @@ function setup() {
 function draw() {
   background(240);
   
+  // 가속도 센서가 활성화되어 있으면 원을 업데이트
+  if (sensorEnabled) {
+    updateBall();
+  }
+  
+  // 원 그리기
+  drawBall();
+  
   // 가속도 센서 값 텍스트로 출력
   fill(0);
   textSize(16);
@@ -57,6 +78,67 @@ function draw() {
   text("X: " + accelX.toFixed(2), 20, startY + 60);
   text("Y: " + accelY.toFixed(2), 20, startY + 90);
   text("Z: " + accelZ.toFixed(2), 20, startY + 120);
+}
+
+// ---- 원 업데이트 (물리 시뮬레이션) ----
+function updateBall() {
+  // 가속도 센서 값을 속도 변화로 변환 (스케일 조정 및 방향 반전)
+  // 화면 좌표계에 맞게 X, Y 축 반전
+  ballVX += -accelX * accelScale;
+  ballVY += accelY * accelScale;
+  
+  // 마찰 적용
+  ballVX *= friction;
+  ballVY *= friction;
+  
+  // 속도가 매우 작으면 정지
+  if (abs(ballVX) < 0.01) ballVX = 0;
+  if (abs(ballVY) < 0.01) ballVY = 0;
+  
+  // 위치 업데이트
+  ballX += ballVX;
+  ballY += ballVY;
+  
+  // 캔버스 경계 처리 (튕기기)
+  if (ballX < ballRadius) {
+    ballX = ballRadius;
+    ballVX *= -0.8;  // 반발 계수
+  } else if (ballX > width - ballRadius) {
+    ballX = width - ballRadius;
+    ballVX *= -0.8;
+  }
+  
+  if (ballY < ballRadius) {
+    ballY = ballRadius;
+    ballVY *= -0.8;
+  } else if (ballY > height - ballRadius) {
+    ballY = height - ballRadius;
+    ballVY *= -0.8;
+  }
+  
+  // 회전 각도 업데이트 (속도에 따라 회전)
+  let rotationSpeed = sqrt(ballVX * ballVX + ballVY * ballVY) * 5;
+  ballRotation += rotationSpeed;
+}
+
+// ---- 원 그리기 ----
+function drawBall() {
+  push();
+  translate(ballX, ballY);
+  rotate(ballRotation);
+  
+  // 파란색 원 그리기
+  fill(0, 100, 255);  // 파란색
+  stroke(0, 50, 200);  // 진한 파란색 테두리
+  strokeWeight(2);
+  ellipse(0, 0, ballDiameter, ballDiameter);
+  
+  // 원의 방향을 표시하는 작은 선 추가 (기울임 확인용)
+  stroke(255, 255, 255);
+  strokeWeight(2);
+  line(0, 0, ballRadius - 5, 0);
+  
+  pop();
 }
 
 // ---- BLE Connect ----
