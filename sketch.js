@@ -2,6 +2,7 @@
 const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214"; 
 const WRITE_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214"; 
 let writeChar, statusP, connectBtn, sendBtn1, sendBtn2, sendBtn3, sensorBtn;
+let cityInput, weatherBtn;  // 날씨 관련 UI 요소
 
 // 가속도 센서 값
 let accelX = 0, accelY = 0, accelZ = 0;
@@ -16,6 +17,11 @@ const ballDiameter = 50;
 const ballRadius = ballDiameter / 2;
 const friction = 0.95;  // 마찰 계수
 const accelScale = 0.5;  // 가속도 스케일 조정
+
+// 날씨 관련 변수
+const OPENWEATHER_API_KEY = "60f88595a9f4df871399482f2b5d8186";
+let currentTemperature = null;  // 현재 온도 (Celsius)
+let weatherInfo = null;  // 날씨 정보 저장
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -54,6 +60,17 @@ function setup() {
   sensorBtn.mousePressed(enableSensor);
   sensorBtn.size(150, 30);
   sensorBtn.position(200, 100);
+
+  // 날씨 관련 UI 요소 (캔버스 하단에 배치)
+  cityInput = createInput();
+  cityInput.attribute('placeholder', '도시 이름 입력');
+  cityInput.position(20, height - 60);
+  cityInput.size(200, 30);
+
+  weatherBtn = createButton("날씨 가져오기");
+  weatherBtn.mousePressed(getWeather);
+  weatherBtn.size(150, 30);
+  weatherBtn.position(240, height - 60);
 }
 
 function draw() {
@@ -78,14 +95,21 @@ function draw() {
   text("X: " + accelX.toFixed(2), 20, startY + 60);
   text("Y: " + accelY.toFixed(2), 20, startY + 90);
   text("Z: " + accelZ.toFixed(2), 20, startY + 120);
+  
+  // 날씨 정보 표시
+  if (weatherInfo) {
+    text("날씨 정보:", 20, startY + 150);
+    text("온도: " + currentTemperature.toFixed(1) + "°C", 20, startY + 180);
+    text("날씨: " + weatherInfo.description, 20, startY + 210);
+  }
 }
 
 // ---- 원 업데이트 (물리 시뮬레이션) ----
 function updateBall() {
-  // 가속도 센서 값을 속도 변화로 변환 (스케일 조정 및 방향 반전)
-  // 화면 좌표계에 맞게 X, Y 축 반전
-  ballVX += -accelX * accelScale;
-  ballVY += accelY * accelScale;
+  // 가속도 센서 값을 속도 변화로 변환
+  // 센서값 X가 커지면 오른쪽으로, 센서값 Y가 커지면 위로 이동
+  ballVX += accelX * accelScale;
+  ballVY += -accelY * accelScale;
   
   // 마찰 적용
   ballVX *= friction;
@@ -127,9 +151,28 @@ function drawBall() {
   translate(ballX, ballY);
   rotate(ballRotation);
   
-  // 파란색 원 그리기
-  fill(0, 100, 255);  // 파란색
-  stroke(0, 50, 200);  // 진한 파란색 테두리
+  // 온도에 따라 색상 결정
+  let ballColor, strokeColor;
+  if (currentTemperature === null) {
+    // 날씨 정보가 없으면 기본 파란색
+    ballColor = color(0, 100, 255);
+    strokeColor = color(0, 50, 200);
+  } else if (currentTemperature <= 10) {
+    // 10도 이하면 파란색
+    ballColor = color(0, 100, 255);
+    strokeColor = color(0, 50, 200);
+  } else if (currentTemperature <= 20) {
+    // 10도~20도면 초록색
+    ballColor = color(0, 200, 100);
+    strokeColor = color(0, 150, 70);
+  } else {
+    // 20도 이상이면 빨간색
+    ballColor = color(255, 0, 0);
+    strokeColor = color(200, 0, 0);
+  }
+  
+  fill(ballColor);
+  stroke(strokeColor);
   strokeWeight(2);
   ellipse(0, 0, ballDiameter, ballDiameter);
   
@@ -220,5 +263,64 @@ async function sendNumber(n) {
     statusP.html("Status: Sent " + n);
   } catch (e) {
     statusP.html("Status: Write error - " + e);
+  }
+}
+
+// ---- 날씨 가져오기 ----
+async function getWeather() {
+  const city = cityInput.value().trim();
+  if (!city) {
+    alert("도시 이름을 입력해주세요.");
+    return;
+  }
+  
+  try {
+    // OpenWeatherMap API 호출
+    const apiUrl = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=kr`;
+    
+    const response = await fetch(apiUrl);
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        alert("도시를 찾을 수 없습니다. 도시 이름을 확인해주세요.");
+      } else if (response.status === 401) {
+        alert("API 키 오류가 발생했습니다.");
+      } else {
+        alert("날씨 정보를 가져오는 중 오류가 발생했습니다. (상태 코드: " + response.status + ")");
+      }
+      return;
+    }
+    
+    const data = await response.json();
+    
+    // 온도 및 날씨 정보 저장
+    currentTemperature = data.main.temp;
+    weatherInfo = {
+      description: data.weather[0].description,
+      city: data.name,
+      country: data.sys.country
+    };
+    
+    console.log("날씨 정보:", weatherInfo);
+    console.log("온도:", currentTemperature);
+    
+    alert(`${weatherInfo.city}, ${weatherInfo.country}\n온도: ${currentTemperature.toFixed(1)}°C\n날씨: ${weatherInfo.description}`);
+    
+  } catch (error) {
+    console.error("날씨 정보 가져오기 오류:", error);
+    alert("날씨 정보를 가져오는 중 네트워크 오류가 발생했습니다.");
+  }
+}
+
+// ---- 창 크기 변경 시 UI 요소 위치 조정 ----
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  
+  // UI 요소 위치 재조정
+  if (cityInput) {
+    cityInput.position(20, height - 60);
+  }
+  if (weatherBtn) {
+    weatherBtn.position(240, height - 60);
   }
 }
