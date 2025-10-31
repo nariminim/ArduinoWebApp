@@ -13,7 +13,7 @@ let sensorStatus = "센서 비활성화됨";
 let ballX, ballY;  // 원의 위치
 let ballVX = 0, ballVY = 0;  // 원의 속도
 let ballRotation = 0;  // 원의 회전 각도
-const ballDiameter = 50;
+const ballDiameter = 20;
 const ballRadius = ballDiameter / 2;
 const friction = 0.95;  // 마찰 계수
 const accelScale = 0.5;  // 가속도 스케일 조정
@@ -74,7 +74,7 @@ function setup() {
 }
 
 function draw() {
-  background(240);
+  //background(240);
   
   // 가속도 센서가 활성화되어 있으면 원을 업데이트
   if (sensorEnabled) {
