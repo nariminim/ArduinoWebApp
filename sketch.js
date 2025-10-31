@@ -1,7 +1,7 @@
 // 소문자 (아두이노와 동일하게 입력)
 const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214"; 
 const WRITE_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214"; 
-let writeChar, statusP, connectBtn;
+let writeChar, statusP, connectBtn, sendBtn1, sendBtn2, sendBtn3;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -14,6 +14,22 @@ function setup() {
 
   statusP = createP("Status: Not connected");
   statusP.position(22, 60);
+
+  // Send 버튼들
+  sendBtn1 = createButton("send 1");
+  sendBtn1.mousePressed(() => sendNumber(1));
+  sendBtn1.size(120, 30);
+  sendBtn1.position(20, 100);
+
+  sendBtn2 = createButton("send 2");
+  sendBtn2.mousePressed(() => sendNumber(2));
+  sendBtn2.size(120, 30);
+  sendBtn2.position(20, 140);
+
+  sendBtn3 = createButton("send 3");
+  sendBtn3.mousePressed(() => sendNumber(3));
+  sendBtn3.size(120, 30);
+  sendBtn3.position(20, 180);
 }
 
 function draw() {}
