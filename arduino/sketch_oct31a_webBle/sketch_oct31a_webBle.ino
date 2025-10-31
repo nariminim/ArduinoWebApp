@@ -1,41 +1,26 @@
-// 마이크 볼륨값을 읽어서 BLE로 전송하는 예제
+// 가속도 센서 X, Y 값을 BLE로 전송하는 예제
+// Arduino Nano 33 BLE Sense Rev2
 // 2025.01.XX
 
 #include <ArduinoBLE.h>
-#include <PDM.h>
+#include <Arduino_LSM6DS3.h>
 
 BLEService ledService("19B10000-E8F2-537E-4F6C-D104768A1214");  // BLE Service
 
-// BLE Characteristic - read and writable by central
-BLEByteCharacteristic switchCharacteristic("19B10001-E8F2-537E-4F6C-D104768A1214", BLERead | BLEWrite);
-
-// 마이크 관련 변수
-static const char channels = 1;
-static const int frequency = 16000;
-short sampleBuffer[256];
-volatile int samplesRead;
-bool micActive = false;
-
-// 볼륨 범위 설정
-const int minVolume = 0;
-const int maxVolume = 1000;  // 조정 가능
-
-void onPDMdata() {
-  int bytesAvailable = PDM.available();
-  PDM.read(sampleBuffer, bytesAvailable);
-  samplesRead = bytesAvailable / 2;
-}
+// BLE Characteristic - read and writable by central (가속도 값 전송용)
+BLECharacteristic accelCharacteristic("19B10001-E8F2-537E-4F6C-D104768A1214", BLERead | BLENotify, 2);
 
 void setup() {
   Serial.begin(9600);
   //while (!Serial); //시리얼 준비될떄까지 대기 (배터리 사용시 없앰)
 
-  // PDM 마이크 초기화
-  PDM.onReceive(onPDMdata);
-  if (!PDM.begin(channels, frequency)) {
-    Serial.println("PDM 마이크 초기화 실패!");
+  // IMU 센서 초기화 (LSM6DS3)
+  if (!IMU.begin()) {
+    Serial.println("IMU 센서 초기화 실패!");
     while (1);
   }
+  
+  Serial.println("IMU 센서 초기화 완료");
 
   // set LED's pin to output mode
   pinMode(LEDR, OUTPUT);
@@ -61,13 +46,14 @@ void setup() {
   BLE.setAdvertisedService(ledService);
 
   // add the characteristic to the service
-  ledService.addCharacteristic(switchCharacteristic);
+  ledService.addCharacteristic(accelCharacteristic);
 
   // add service
   BLE.addService(ledService);
 
   // set the initial value for the characteristic:
-  switchCharacteristic.writeValue(0);
+  uint8_t initialValue[2] = {0, 0};
+  accelCharacteristic.writeValue(initialValue, 2);
 
   // start advertising
   BLE.advertise();
@@ -88,43 +74,30 @@ void loop() {
 
     // while the central is still connected to peripheral:
     while (central.connected()) {
-      // 마이크 활성화 명령 수신 확인
-      if (switchCharacteristic.written()) {
-        byte value = switchCharacteristic.value();
-        if (value == 1) {
-          micActive = true;
-          Serial.println("마이크 시작");
-        } else if (value == 0) {
-          micActive = false;
-          Serial.println("마이크 중지");
-        }
+      // 가속도 센서 값 읽기
+      float x, y, z;
+      if (IMU.accelerationAvailable()) {
+        IMU.readAcceleration(x, y, z);
+        
+        // X, Y 값을 -1.0 ~ 1.0 범위에서 0 ~ 255로 맵핑
+        int xMapped = map(constrain(x * 100, -100, 100), -100, 100, 0, 255);
+        int yMapped = map(constrain(y * 100, -100, 100), -100, 100, 0, 255);
+        
+        // BLE로 값 전송 (2바이트: X, Y)
+        uint8_t accelData[2] = {(uint8_t)xMapped, (uint8_t)yMapped};
+        accelCharacteristic.writeValue(accelData, 2);
+        
+        Serial.print("가속도 X: ");
+        Serial.print(x);
+        Serial.print(", Y: ");
+        Serial.print(y);
+        Serial.print(" -> 맵핑: X=");
+        Serial.print(xMapped);
+        Serial.print(", Y=");
+        Serial.println(yMapped);
       }
       
-      // 마이크가 활성화된 경우 볼륨값 읽기 및 전송
-      if (micActive && samplesRead > 0) {
-        // 볼륨값 계산 (RMS)
-        long sum = 0;
-        for (int i = 0; i < samplesRead; i++) {
-          sum += abs(sampleBuffer[i]);
-        }
-        int volume = sum / samplesRead;
-        
-        // 0~255로 맵핑
-        int mappedVolume = map(volume, minVolume, maxVolume, 0, 255);
-        mappedVolume = constrain(mappedVolume, 0, 255);
-        
-        // BLE로 값 전송
-        switchCharacteristic.writeValue((byte)mappedVolume);
-        
-        Serial.print("볼륨: ");
-        Serial.print(volume);
-        Serial.print(" -> 맵핑된 값: ");
-        Serial.println(mappedVolume);
-        
-        samplesRead = 0;
-      }
-      
-      delay(50);  // 약간의 딜레이
+      delay(50);  // 50ms마다 업데이트
     }
 
     // when the central disconnects, print it out:
